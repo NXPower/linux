@@ -1327,6 +1327,49 @@ static bool vfio_iommu_has_sw_msi(struct iommu_group *group, phys_addr_t *base)
 	return ret;
 }
 
+static int vfio_iommu_group_create_direct_mappings(struct device *dev,
+						   void *data)
+{
+	struct list_head resv_regions;
+	struct iommu_resv_region *region;
+	unsigned long pg_size;
+	int ret = 0;
+	struct iommu_domain *domain = data;
+
+	BUG_ON(!domain->ops->pgsize_bitmap);
+
+	pg_size = 1UL << __ffs(domain->ops->pgsize_bitmap);
+
+	INIT_LIST_HEAD(&resv_regions);
+	iommu_get_resv_regions(dev, &resv_regions);
+
+	list_for_each_entry(region, &resv_regions, list) {
+		dma_addr_t start, end, addr;
+
+		if (region->type != IOMMU_RESV_DIRECT)
+			continue;
+
+		start = ALIGN(region->start, pg_size);
+		end   = ALIGN(region->start + region->length, pg_size);
+
+		for (addr = start; addr < end; addr += pg_size) {
+			phys_addr_t phys_addr;
+
+			phys_addr = iommu_iova_to_phys(domain, addr);
+			if (phys_addr)
+				continue;
+
+			ret = iommu_map(domain, addr, addr, pg_size, region->prot);
+			if (ret)
+				goto out;
+		}
+	}
+
+out:
+	iommu_put_resv_regions(dev, &resv_regions);
+	return ret;
+}
+
 static int vfio_iommu_type1_attach_group(void *iommu_data,
 					 struct iommu_group *iommu_group)
 {
@@ -1448,6 +1491,12 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 				goto out_domain;
 		}
 	}
+
+	/* Setup direct mapping for devices */
+	ret = iommu_group_for_each_dev(iommu_group, domain->domain,
+				       vfio_iommu_group_create_direct_mappings);
+	if (ret < 0)
+		goto out_detach;
 
 	vfio_test_domain_fgsp(domain);
 

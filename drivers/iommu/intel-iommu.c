@@ -60,6 +60,7 @@
 #define IS_GFX_DEVICE(pdev) ((pdev->class >> 16) == PCI_BASE_CLASS_DISPLAY)
 #define IS_USB_DEVICE(pdev) ((pdev->class >> 8) == PCI_CLASS_SERIAL_USB)
 #define IS_ISA_DEVICE(pdev) ((pdev->class >> 8) == PCI_CLASS_BRIDGE_ISA)
+#define IS_STORAGE_DEVICE(pdev) ((pdev->class >> 16) == PCI_BASE_CLASS_STORAGE)
 #define IS_AZALIA(pdev) ((pdev)->vendor == 0x8086 && (pdev)->device == 0x3a3e)
 
 #define IOAPIC_RANGE_START	(0xfee00000)
@@ -2904,7 +2905,8 @@ static bool device_is_rmrr_locked(struct device *dev)
 	if (dev_is_pci(dev)) {
 		struct pci_dev *pdev = to_pci_dev(dev);
 
-		if (IS_USB_DEVICE(pdev) || IS_GFX_DEVICE(pdev))
+		if (IS_USB_DEVICE(pdev) || IS_GFX_DEVICE(pdev) ||
+			IS_STORAGE_DEVICE(pdev))
 			return false;
 	}
 
