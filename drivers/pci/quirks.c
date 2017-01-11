@@ -3798,8 +3798,6 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 		reset_chelsio_generic_dev },
         { PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3008,
 		pci_parent_bus_reset },
-        { PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_MEGARAID_3108,
-		pci_parent_bus_reset },
 	{ 0 }
 };
 
