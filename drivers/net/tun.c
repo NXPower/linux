@@ -2533,8 +2533,8 @@ static int tun_set_iff(struct net *net, struct file *file, struct ifreq *ifr)
 		else
 			return -EINVAL;
 
-		if (!!(ifr->ifr_flags & IFF_MULTI_QUEUE) !=
-		    !!(tun->flags & IFF_MULTI_QUEUE))
+		if ((ifr->ifr_flags & IFF_MULTI_QUEUE)
+		    && !(tun->flags & IFF_MULTI_QUEUE))
 			return -EINVAL;
 
 		if (tun_not_capable(tun))
