@@ -813,16 +813,9 @@ void set_buildid_dir(const char *dir)
 	if (dir)
 		scnprintf(buildid_dir, MAXPATHLEN-1, "%s", dir);
 
-	/* default to $HOME/.debug */
+	/* default to /dev/null */
 	if (buildid_dir[0] == '\0') {
-		char *home = getenv("HOME");
-
-		if (home) {
-			snprintf(buildid_dir, MAXPATHLEN-1, "%s/%s",
-				 home, DEBUG_CACHE_DIR);
-		} else {
-			strncpy(buildid_dir, DEBUG_CACHE_DIR, MAXPATHLEN-1);
-		}
+		strncpy(buildid_dir, "/dev/null", MAXPATHLEN-1);
 		buildid_dir[MAXPATHLEN-1] = '\0';
 	}
 	/* for communicating with external commands */
