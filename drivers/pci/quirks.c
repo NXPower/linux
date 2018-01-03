@@ -3683,6 +3683,8 @@ static int reset_chelsio_generic_dev(struct pci_dev *dev, int probe)
 #define PCI_DEVICE_ID_LSI_LOGIC_SAS3008       0x0097
 #define PCI_DEVICE_ID_LSI_LOGIC_SAS3416 0x00ac
 #define PCI_DEVICE_ID_LSI_LOGIC_SAS3408 0x00af
+#define PCI_DEVICE_ID_LSI_LOGIC_SAS3508 0x00ae
+#define PCI_DEVICE_ID_LSI_LOGIC_SAS3516 0x00ab
 
 /*
  * The Samsung SM961/PM961 controller can sometimes enter a fatal state after
@@ -3797,11 +3799,15 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 	{ PCI_VENDOR_ID_INTEL, 0x0953, delay_250ms_after_flr },
 	{ PCI_VENDOR_ID_CHELSIO, PCI_ANY_ID,
 		reset_chelsio_generic_dev },
-        { PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3008,
+	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3008,
 		pci_parent_bus_reset },
-        { PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3416,
+	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3416,
 		pci_parent_bus_reset },
-        { PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3408,
+	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3408,
+		pci_parent_bus_reset },
+	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3508,
+		pci_parent_bus_reset },
+	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3516,
 		pci_parent_bus_reset },
 	{ 0 }
 };
