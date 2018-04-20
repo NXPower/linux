@@ -124,6 +124,32 @@ MODULE_PARM_DESC(halt_poll_ns_shrink, "Factor halt poll time is shrunk by");
 static void kvmppc_end_cede(struct kvm_vcpu *vcpu);
 static int kvmppc_hv_setup_htab_rma(struct kvm_vcpu *vcpu);
 
+/*
+ * RWMR values for POWER8.  These control the rate at which PURR
+ * and SPURR count and should be set according to the number of
+ * online threads in the vcore being run.
+ */
+#define RWMR_RPA_P8_1THREAD	0x164520C62609AECA
+#define RWMR_RPA_P8_2THREAD	0x7FFF2908450D8DA9
+#define RWMR_RPA_P8_3THREAD	0x164520C62609AECA
+#define RWMR_RPA_P8_4THREAD	0x199A421245058DA9
+#define RWMR_RPA_P8_5THREAD	0x164520C62609AECA
+#define RWMR_RPA_P8_6THREAD	0x164520C62609AECA
+#define RWMR_RPA_P8_7THREAD	0x164520C62609AECA
+#define RWMR_RPA_P8_8THREAD	0x164520C62609AECA
+
+static unsigned long p8_rwmr_values[MAX_SMT_THREADS + 1] = {
+	RWMR_RPA_P8_1THREAD,
+	RWMR_RPA_P8_1THREAD,
+	RWMR_RPA_P8_2THREAD,
+	RWMR_RPA_P8_3THREAD,
+	RWMR_RPA_P8_4THREAD,
+	RWMR_RPA_P8_5THREAD,
+	RWMR_RPA_P8_6THREAD,
+	RWMR_RPA_P8_7THREAD,
+	RWMR_RPA_P8_8THREAD,
+};
+
 static inline struct kvm_vcpu *next_runnable_thread(struct kvmppc_vcore *vc,
 		int *ip)
 {
@@ -1538,7 +1564,12 @@ static int kvmppc_set_one_reg_hv(struct kvm_vcpu *vcpu, u64 id,
 		r = kvmppc_set_arch_compat(vcpu, set_reg_val(id, *val));
 		break;
 	case KVM_REG_PPC_ONLINE:
-		vcpu->arch.online = set_reg_val(id, *val);
+		i = set_reg_val(id, *val);
+		if (i && !vcpu->arch.online)
+			atomic_inc(&vcpu->arch.vcore->online_count);
+		else if (!i && vcpu->arch.online)
+			atomic_dec(&vcpu->arch.vcore->online_count);
+		vcpu->arch.online = i;
 		break;
 	default:
 		r = -EINVAL;
@@ -2315,6 +2346,7 @@ static noinline void kvmppc_run_core(struct kvmppc_vcore *vc)
 	unsigned long cmd_bit, stat_bit;
 	int pcpu, thr;
 	int target_threads;
+	bool is_power8;
 
 	/*
 	 * Remove from the list any threads that have a signal pending
@@ -2364,6 +2396,9 @@ static noinline void kvmppc_run_core(struct kvmppc_vcore *vc)
 	cmd_bit = stat_bit = 0;
 	split = core_info.n_subcores;
 	sip = NULL;
+	is_power8 = cpu_has_feature(CPU_FTR_ARCH_207S)
+		&& !cpu_has_feature(CPU_FTR_ARCH_300);
+
 	if (split > 1) {
 		/* threads_per_subcore must be MAX_SMT_THREADS (8) here */
 		if (split == 2 && (dynamic_mt_modes & 2)) {
@@ -2409,6 +2444,25 @@ static noinline void kvmppc_run_core(struct kvmppc_vcore *vc)
 	}
 
 	kvmppc_clear_host_core(pcpu);
+
+	/*
+	 * On POWER8, set RWMR register.
+	 * Since it only affects PURR and SPURR, it doesn't affect
+	 * the host, so we don't save/restore the host value.
+	 */
+	if (is_power8) {
+		unsigned long rwmr_val = RWMR_RPA_P8_8THREAD;
+		int n_online = atomic_read(&vc->online_count);
+
+		/*
+		 * Use the 8-thread value if we're doing split-core
+		 * or if the vcore's online count looks bogus.
+		 */
+		if (split == 1 && threads_per_subcore == MAX_SMT_THREADS &&
+		    n_online >= 1 && n_online <= MAX_SMT_THREADS)
+			rwmr_val = p8_rwmr_values[n_online];
+		mtspr(SPRN_RWMR, rwmr_val);
+	}
 
 	/* Start all the threads */
 	active = 0;
@@ -2841,6 +2895,15 @@ static int kvmppc_vcpu_run_hv(struct kvm_run *run, struct kvm_vcpu *vcpu)
 		current->thread.regs->msr &= ~MSR_TM;
 	}
 #endif
+
+	/*
+	 * Force online to 1 for the sake of old userspace which doesn't
+	 * set it.
+	 */
+	if (!vcpu->arch.online) {
+		atomic_inc(&vcpu->arch.vcore->online_count);
+		vcpu->arch.online = 1;
+	}
 
 	kvmppc_core_prepare_to_enter(vcpu);
 
