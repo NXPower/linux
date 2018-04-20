@@ -1321,6 +1321,9 @@ static int kvmppc_get_one_reg_hv(struct kvm_vcpu *vcpu, u64 id,
 	case KVM_REG_PPC_ARCH_COMPAT:
 		*val = get_reg_val(id, vcpu->arch.vcore->arch_compat);
 		break;
+	case KVM_REG_PPC_ONLINE:
+		*val = get_reg_val(id, vcpu->arch.online);
+		break;
 	default:
 		r = -EINVAL;
 		break;
@@ -1533,6 +1536,9 @@ static int kvmppc_set_one_reg_hv(struct kvm_vcpu *vcpu, u64 id,
 #endif
 	case KVM_REG_PPC_ARCH_COMPAT:
 		r = kvmppc_set_arch_compat(vcpu, set_reg_val(id, *val));
+		break;
+	case KVM_REG_PPC_ONLINE:
+		vcpu->arch.online = set_reg_val(id, *val);
 		break;
 	default:
 		r = -EINVAL;
