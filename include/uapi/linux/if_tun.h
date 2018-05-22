@@ -76,6 +76,7 @@
 /* read-only flag */
 #define IFF_PERSIST	0x0800
 #define IFF_NOFILTER	0x1000
+#define IFF_RX_CSUM_FIXUP 0x0080
 
 /* Socket options */
 #define TUN_TX_TIMESTAMP 1

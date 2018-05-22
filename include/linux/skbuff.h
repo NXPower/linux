@@ -3292,6 +3292,9 @@ __poll_t datagram_poll(struct file *file, struct socket *sock,
 			   struct poll_table_struct *wait);
 int skb_copy_datagram_iter(const struct sk_buff *from, int offset,
 			   struct iov_iter *to, int size);
+int skb_copy_and_csum_datagram(const struct sk_buff *skb, int offset,
+				      struct iov_iter *to, int len,
+				      __wsum *csump);
 static inline int skb_copy_datagram_msg(const struct sk_buff *from, int offset,
 					struct msghdr *msg, int size)
 {

@@ -645,7 +645,7 @@ int zerocopy_sg_from_iter(struct sk_buff *skb, struct iov_iter *from)
 }
 EXPORT_SYMBOL(zerocopy_sg_from_iter);
 
-static int skb_copy_and_csum_datagram(const struct sk_buff *skb, int offset,
+int skb_copy_and_csum_datagram(const struct sk_buff *skb, int offset,
 				      struct iov_iter *to, int len,
 				      __wsum *csump)
 {
@@ -727,6 +727,7 @@ fault:
 	iov_iter_revert(to, offset - start_off);
 	return -EFAULT;
 }
+EXPORT_SYMBOL_GPL(skb_copy_and_csum_datagram);
 
 __sum16 __skb_checksum_complete_head(struct sk_buff *skb, int len)
 {
