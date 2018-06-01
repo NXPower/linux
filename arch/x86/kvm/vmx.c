@@ -115,6 +115,9 @@ static u64 __read_mostly host_xss;
 static bool __read_mostly enable_pml = 1;
 module_param_named(pml, enable_pml, bool, S_IRUGO);
 
+static bool __read_mostly enable_large_page = true;
+module_param(enable_large_page, bool, S_IRUGO);
+
 #define MSR_TYPE_R	1
 #define MSR_TYPE_W	2
 #define MSR_TYPE_RW	3
@@ -7933,7 +7936,7 @@ static __init int hardware_setup(void)
 	if (!cpu_has_vmx_tpr_shadow())
 		kvm_x86_ops->update_cr8_intercept = NULL;
 
-	if (enable_ept && !cpu_has_vmx_ept_2m_page())
+	if (enable_ept && (!cpu_has_vmx_ept_2m_page() || !enable_large_page))
 		kvm_disable_largepages();
 
 #if IS_ENABLED(CONFIG_HYPERV)
