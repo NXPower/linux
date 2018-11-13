@@ -906,12 +906,100 @@ static struct kvm_cpuid_entry2* check_cpuid_limit(struct kvm_vcpu *vcpu,
 	return kvm_find_cpuid_entry(vcpu, maxlevel->eax, index);
 }
 
+/* return true if the guest vcpu has booted into windows */
+static bool is_guest_vcpu_windows(struct kvm_vcpu *vcpu)
+{
+	u64 ptbase;
+	u64 mask;
+	u64 pte;
+	ulong pte_size;
+	ulong idx;
+	ulong addr;
+
+	/* Windows uses a loopback entry in its pagetables, i.e. the
+	   idx-th entry of its toplevel page table at ptbase points to
+	   ptbase. Determine if guest is windows by looking for that
+	   loopback entry for the various paging modes. */
+
+	if (!is_paging(vcpu)) {
+		pr_debug("kvm: %s: guest not in paging mode\n",
+			 __func__);
+		return false;
+	} else if (is_la57_mode(vcpu)) {
+		pr_debug("kvm: %s: guest in la57 mode\n",
+			 __func__);
+		return false;
+	} else if (is_long_mode(vcpu)) {
+		mask = 0xffffffffff000ULL; /* 52-bit physical */
+		ptbase = kvm_read_cr3(vcpu) & mask;
+		pte_size = 8;
+		idx = 0x1ed;
+	} else if (is_pae(vcpu)) {
+		mask = 0xffffff000ULL; /* 36-bit physical */
+		ptbase = kvm_pdptr_read(vcpu, 3) & mask;
+		pte_size = 8;
+		idx = 3;
+	} else {
+		mask = 0xfffff000;     /* 32-bit physical */
+		ptbase = kvm_read_cr3(vcpu) & mask;
+		pte_size = 4;
+		idx = 0x300;
+	}
+
+	addr = kvm_vcpu_gfn_to_hva(vcpu, ptbase >> PAGE_SHIFT);
+	if (!kvm_is_error_hva(addr) &&
+	    copy_from_user(&pte, (void __user *)(addr + idx * pte_size),
+			   pte_size) == 0) {
+		bool is_windows = (pte & mask) == ptbase;
+
+		pr_debug("kvm: %s: ptbase pte: %llx %llx, result: %d",
+			 __func__, ptbase, pte, is_windows);
+
+		return is_windows;
+	} else {
+		pr_warn_ratelimited("kvm: %s: failed to read guest PTE\n",
+				    __func__);
+		return false;
+	}
+}
+
+static bool is_hyperv_advertised(struct kvm_vcpu *vcpu)
+{
+	const struct kvm_cpuid_entry2 *best;
+
+	best = kvm_find_cpuid_entry(vcpu, 0x40000000, 0);
+	if (best) {
+		u32 sig[3] = { best->ebx, best->ecx, best->edx };
+		return memcmp(sig, "Microsoft Hv", 12) == 0;
+	}
+	return false;
+}
+
 bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 	       u32 *ecx, u32 *edx, bool check_limit)
 {
 	u32 function = *eax, index = *ecx;
 	struct kvm_cpuid_entry2 *best;
 	bool entry_found = true;
+	u32 eax_adjust = 0;
+
+	/* If hyperv is exposed and the guest is not windows, redirect
+	   queries to the first hypervisor block [40000000..400000FF]
+	   to the subsequent block at offset 0x100. See asm/processor.h
+	   hypervisor_cpuid_base() for how probing for multiple hypervisor
+	   blocks is handled by the guest. */
+	if (function >= 0x40000000 && function <= 0x400000FF &&
+	    is_hyperv_advertised(vcpu) && !is_guest_vcpu_windows(vcpu)) {
+		function += 0x100;
+
+		/* When querying 40000000, output EAX is the max
+		   function in that hypervisor block. Therefore if we
+		   had just increased the function by 0x100 we would
+		   also need to decrease EAX by the same amount. */
+		if (function == 0x40000100) {
+			eax_adjust = -0x100;
+		}
+	}
 
 	best = kvm_find_cpuid_entry(vcpu, function, index);
 
@@ -925,7 +1013,7 @@ bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 
 out:
 	if (best) {
-		*eax = best->eax;
+		*eax = best->eax + eax_adjust;
 		*ebx = best->ebx;
 		*ecx = best->ecx;
 		*edx = best->edx;
