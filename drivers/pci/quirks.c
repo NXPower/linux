@@ -3685,6 +3685,12 @@ static int reset_chelsio_generic_dev(struct pci_dev *dev, int probe)
 #define PCI_DEVICE_ID_LSI_LOGIC_SAS3408 0x00af
 #define PCI_DEVICE_ID_LSI_LOGIC_SAS3508 0x00ae
 #define PCI_DEVICE_ID_LSI_LOGIC_SAS3516 0x00ab
+#define PCI_DEVICE_ID_LSI_LOGIC_SAS3108 0x005d
+
+static int dummy_pci_reset(struct pci_dev *dev, int probe)
+{
+	return 0;
+}
 
 /*
  * The Samsung SM961/PM961 controller can sometimes enter a fatal state after
@@ -3790,25 +3796,41 @@ static int delay_250ms_after_flr(struct pci_dev *dev, int probe)
 
 static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 	{ PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82599_SFP_VF,
-		 reset_intel_82599_sfp_virtfn },
+		PCI_ANY_ID, PCI_ANY_ID,
+		reset_intel_82599_sfp_virtfn },
 	{ PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IVB_M_VGA,
+		PCI_ANY_ID, PCI_ANY_ID,
 		reset_ivb_igd },
 	{ PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IVB_M2_VGA,
+		PCI_ANY_ID, PCI_ANY_ID,
 		reset_ivb_igd },
-	{ PCI_VENDOR_ID_SAMSUNG, 0xa804, nvme_disable_and_flr },
-	{ PCI_VENDOR_ID_INTEL, 0x0953, delay_250ms_after_flr },
+	{ PCI_VENDOR_ID_SAMSUNG, 0xa804,
+		PCI_ANY_ID, PCI_ANY_ID,
+		nvme_disable_and_flr },
+	{ PCI_VENDOR_ID_INTEL, 0x0953,
+		PCI_ANY_ID, PCI_ANY_ID,
+		delay_250ms_after_flr },
 	{ PCI_VENDOR_ID_CHELSIO, PCI_ANY_ID,
+		PCI_ANY_ID, PCI_ANY_ID,
 		reset_chelsio_generic_dev },
 	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3008,
+		PCI_ANY_ID, PCI_ANY_ID,
 		pci_parent_bus_reset },
 	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3416,
+		PCI_ANY_ID, PCI_ANY_ID,
 		pci_parent_bus_reset },
 	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3408,
+		PCI_ANY_ID, PCI_ANY_ID,
 		pci_parent_bus_reset },
 	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3508,
+		PCI_ANY_ID, PCI_ANY_ID,
 		pci_parent_bus_reset },
 	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3516,
+		PCI_ANY_ID, PCI_ANY_ID,
 		pci_parent_bus_reset },
+	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3108,
+		PCI_VENDOR_ID_DELL, 0x1f49,
+		dummy_pci_reset },
 	{ 0 }
 };
 
@@ -3825,7 +3847,11 @@ int pci_dev_specific_reset(struct pci_dev *dev, int probe)
 		if ((i->vendor == dev->vendor ||
 		     i->vendor == (u16)PCI_ANY_ID) &&
 		    (i->device == dev->device ||
-		     i->device == (u16)PCI_ANY_ID))
+		     i->device == (u16)PCI_ANY_ID) &&
+		    (i->subvendor == dev->subsystem_vendor ||
+		     i->subvendor == (u16)PCI_ANY_ID) &&
+		    (i->subdevice == dev->subsystem_device ||
+		     i->subdevice == (u16)PCI_ANY_ID))
 			return i->reset(dev, probe);
 	}
 

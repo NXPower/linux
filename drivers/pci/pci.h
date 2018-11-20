@@ -456,6 +456,8 @@ static inline void pci_ptm_init(struct pci_dev *dev) { }
 struct pci_dev_reset_methods {
 	u16 vendor;
 	u16 device;
+	u16 subvendor;
+	u16 subdevice;
 	int (*reset)(struct pci_dev *dev, int probe);
 };
 
