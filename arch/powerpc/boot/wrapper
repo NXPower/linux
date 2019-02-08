@@ -181,6 +181,12 @@ case "$elfformat" in
     elf32-powerpc)	format=elf32ppc	;;
 esac
 
+# If the build-id is present in the source kernel image, include it in the target
+LANG=C buildid="`${CROSS}readelf -n "$kernel" | grep GNU_BUILD_ID`" || true
+if [ -n "$buildid" ]; then
+    buildid="--build-id"
+fi
+
 ld_version()
 {
     # Poached from scripts/ld-version.sh, but we don't want to call that because
@@ -468,7 +474,7 @@ if [ "$platform" != "miboot" ]; then
         text_start="-Ttext $link_address"
     fi
 #link everything
-    ${CROSS}ld -m $format -T $lds $text_start $pie $nodl -o "$ofile" \
+    ${CROSS}ld $buildid -m $format -T $lds $text_start $pie $nodl -o "$ofile" \
 	$platformo $tmp $object/wrapper.a
     rm $tmp
 fi
