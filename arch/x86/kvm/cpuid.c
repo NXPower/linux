@@ -910,16 +910,58 @@ static struct kvm_cpuid_entry2* check_cpuid_limit(struct kvm_vcpu *vcpu,
 	return kvm_find_cpuid_entry(vcpu, maxlevel->eax, index);
 }
 
+/* Searches a page table looking for entry that satisfies:
+ * (pte & mask) == pattern. Returns idx of the matching entry, or
+ * -1 if no match was found.
+ */
+static int pte_search(struct kvm_vcpu *vcpu, u64 ptbase,
+                      int idx, int nr_pte, int pte_size,
+                      u64 mask, u64 pattern)
+{
+	u64 pte;
+	u64 addr;
+
+	addr = kvm_vcpu_gfn_to_hva(vcpu, ptbase >> PAGE_SHIFT);
+	if (kvm_is_error_hva(addr)) {
+		goto err;
+	}
+
+	for (; nr_pte-- > 0; idx++) {
+		const void __user *p = (void __user *)(addr + idx * pte_size);
+		bool match;
+
+		if (copy_from_user(&pte, p, pte_size) != 0) {
+			goto err;
+		}
+
+		match = ((pte & mask) == pattern);
+		pr_debug("kvm: %s: ptbase[idx] pte pattern/mask: "
+		         "%llx[%x] %llx %llx/%llx, match: %d\n",
+		         __func__, ptbase, idx, pte, pattern, mask, match);
+
+		if (match) return idx;
+	}
+	return -1;
+
+err:
+	pr_warn_ratelimited("kvm: %s: failed to read guest PTE @%llx[%x]\n",
+	                    __func__, ptbase, idx);
+	return -1;
+}
+
+static bool is_pte_loopback(struct kvm_vcpu *vcpu, u64 ptbase,
+                            int idx, int nr_pte, int pte_size)
+{
+	u64 mask = PHYSICAL_PAGE_MASK | _PAGE_PRESENT | _PAGE_RW | _PAGE_USER;
+	u64 pattern = ptbase | _PAGE_PRESENT | _PAGE_RW;
+
+	return pte_search(vcpu, ptbase, idx, nr_pte, pte_size,
+	                  mask, pattern) >= 0;
+}
+
 /* return true if the guest vcpu has booted into windows */
 static bool is_guest_vcpu_windows(struct kvm_vcpu *vcpu)
 {
-	u64 ptbase;
-	u64 mask;
-	u64 pte;
-	ulong pte_size;
-	ulong idx;
-	ulong addr;
-
 	/* Windows uses a loopback entry in its pagetables, i.e. the
 	   idx-th entry of its toplevel page table at ptbase points to
 	   ptbase. Determine if guest is windows by looking for that
@@ -927,43 +969,25 @@ static bool is_guest_vcpu_windows(struct kvm_vcpu *vcpu)
 
 	if (!is_paging(vcpu)) {
 		pr_debug("kvm: %s: guest not in paging mode\n",
-			 __func__);
+		         __func__);
 		return false;
 	} else if (is_la57_mode(vcpu)) {
 		pr_debug("kvm: %s: guest in la57 mode\n",
-			 __func__);
+		         __func__);
 		return false;
 	} else if (is_long_mode(vcpu)) {
-		mask = 0xffffffffff000ULL; /* 52-bit physical */
-		ptbase = kvm_read_cr3(vcpu) & mask;
-		pte_size = 8;
-		idx = 0x1ed;
+		u64 cr3 = kvm_read_cr3(vcpu);
+
+		/* Window 7, 8, and 10 before 1607 has PTE_BASE at
+		   FFFFF680`00000000 (index 0x1ed). Windows 10.1607
+		   and later uses PTE_BASE randomization so we need
+		   to search the entire kernel address space. */
+		return (is_pte_loopback(vcpu, cr3, 0x1ed, 1, 8) ||
+		        is_pte_loopback(vcpu, cr3, 0x100, 0x100, 8));
 	} else if (is_pae(vcpu)) {
-		mask = 0xffffff000ULL; /* 36-bit physical */
-		ptbase = kvm_pdptr_read(vcpu, 3) & mask;
-		pte_size = 8;
-		idx = 3;
+		return is_pte_loopback(vcpu, kvm_pdptr_read(vcpu, 3), 3, 1, 8);
 	} else {
-		mask = 0xfffff000;     /* 32-bit physical */
-		ptbase = kvm_read_cr3(vcpu) & mask;
-		pte_size = 4;
-		idx = 0x300;
-	}
-
-	addr = kvm_vcpu_gfn_to_hva(vcpu, ptbase >> PAGE_SHIFT);
-	if (!kvm_is_error_hva(addr) &&
-	    copy_from_user(&pte, (void __user *)(addr + idx * pte_size),
-			   pte_size) == 0) {
-		bool is_windows = (pte & mask) == ptbase;
-
-		pr_debug("kvm: %s: ptbase pte: %llx %llx, result: %d",
-			 __func__, ptbase, pte, is_windows);
-
-		return is_windows;
-	} else {
-		pr_warn_ratelimited("kvm: %s: failed to read guest PTE\n",
-				    __func__);
-		return false;
+		return is_pte_loopback(vcpu, kvm_read_cr3(vcpu), 0x300, 1, 4);
 	}
 }
 
@@ -979,6 +1003,9 @@ static bool is_hyperv_advertised(struct kvm_vcpu *vcpu)
 	return false;
 }
 
+static int cpuid_hide_hyperv = 1;
+module_param(cpuid_hide_hyperv, int, S_IRUGO|S_IWUSR);
+
 bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 	       u32 *ecx, u32 *edx, bool check_limit)
 {
@@ -992,7 +1019,8 @@ bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 	   to the subsequent block at offset 0x100. See asm/processor.h
 	   hypervisor_cpuid_base() for how probing for multiple hypervisor
 	   blocks is handled by the guest. */
-	if (function >= 0x40000000 && function <= 0x400000FF &&
+	if (cpuid_hide_hyperv &&
+	    function >= 0x40000000 && function <= 0x400000FF &&
 	    is_hyperv_advertised(vcpu) && !is_guest_vcpu_windows(vcpu)) {
 		function += 0x100;
 
