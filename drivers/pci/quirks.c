@@ -32,6 +32,8 @@
 #include <asm/dma.h>	/* isa_dma_bridge_buggy */
 #include "pci.h"
 
+#define PCI_DEVICE_ID_ADAPTEC2_SERIES_8_12G_SAS_PCIE3 0x028d
+
 static ktime_t fixup_debug_start(struct pci_dev *dev,
 				 void (*fn)(struct pci_dev *dev))
 {
@@ -3831,6 +3833,9 @@ static const struct pci_dev_reset_methods pci_dev_reset_methods[] = {
 	{ PCI_VENDOR_ID_LSI_LOGIC, PCI_DEVICE_ID_LSI_LOGIC_SAS3108,
 		PCI_VENDOR_ID_DELL, 0x1f49,
 		dummy_pci_reset },
+	{ PCI_VENDOR_ID_ADAPTEC2, PCI_DEVICE_ID_ADAPTEC2_SERIES_8_12G_SAS_PCIE3,
+        PCI_ANY_ID, PCI_ANY_ID,
+        pci_parent_bus_reset },
 	{ 0 }
 };
 
